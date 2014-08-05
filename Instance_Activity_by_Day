@@ -1,0 +1,261 @@
+--- Binds: (:start_date,:end_date,:beginhour,:endhour) 
+
+WITH snaps AS
+     (SELECT snap_id
+        FROM dba_hist_snapshot
+       WHERE end_interval_time BETWEEN TO_DATE (:start_date,
+                                                'MM/DD/YYYY HH24:MI:SS'
+                                               )
+                                   AND TO_DATE (:end_date,
+                                                'MM/DD/YYYY HH24:MI:SS'
+                                               ))
+SELECT   DAY, SUM (snap_seconds) AS "SNAP SECONDS",
+         SUM (logical_reads) AS "LOGICAL READS", SUM (db_cpu) AS "DB CPU",
+         SUM (db_time) AS "DB TIME", SUM (phys_reads) AS "PHYS READS",
+         SUM (phys_writes) AS "PHYS WRITES", SUM (user_calls) AS "USER CALLS",
+         SUM (execs) AS "EXECS", SUM (io_wait_s) AS "IO WAIT S",
+         SUM (concur_wait_s) AS "CONCUR WAIT S",
+         SUM (hard_parses) AS "HARD PARSES",
+         SUM (total_parses) AS "TOTAL PARSES",
+         SUM (parse_cpu_s) AS "PARSE CPU S",
+         SUM (parse_elap_s) AS "PARSE ELAP S",
+         SUM (sorts_disk) AS "SORTS DISK", SUM (sorts_mem) AS "SORTS MEM",
+         SUM (sorts_rows) AS "SORTS ROWS",
+         SUM (tbl_fetch_rowid) AS "TBL FETCH ROWID",
+         SUM (tbl_scan_rows) AS "TBL SCAN ROWS",
+         SUM (user_commits) AS "USER COMMITS",
+         SUM (user_rollbacks) AS "USER ROLLBACKS",
+         SUM (wa_execs_multi) AS "WA EXECS MULTI",
+         SUM (wa_execs_onepass) AS "WA EXECS ONEPASS",
+         SUM (wa_execs_optimal) AS "WA EXECS OPTIMAL",
+         SUM (sqlnet_rt_client) AS "SQLNET RT CLIENT",
+         SUM (sqlnet_rt_dblink) AS "SQLNET RT DBLINK",
+         SUM (sqlnet_bytes_from_client) AS "SQLNET BYTES FROM CLIENT",
+         SUM (sqlnet_bytes_to_client) AS "SQLNET BYTES TO CLIENT",
+         SUM (sqlnet_bytes_to_dblink) AS "SQLNET BYTES TO DBLINK"
+    FROM (SELECT TRUNC (end_interval_time) AS DAY, snap_seconds, db_cpu,
+                 db_time, sqlnet_rt_client, sqlnet_rt_dblink,
+                 sqlnet_bytes_from_client, sqlnet_bytes_from_dblink,
+                 sqlnet_bytes_to_client, sqlnet_bytes_to_dblink,
+                 concur_wait_s, execs, hard_parses, total_parses, parse_cpu_s,
+                 parse_elap_s, phys_reads, phys_writes, logical_reads,
+                 sorts_disk, sorts_mem, sorts_rows, tbl_fetch_rowid,
+                 tbl_scan_rows, io_wait_s, user_calls, user_commits,
+                 user_rollbacks, wa_execs_multi, wa_execs_onepass,
+                 wa_execs_optimal
+            FROM (SELECT   c.snap_id, c.end_interval_time, c.snap_seconds,
+                           MAX (DECODE (c.stat_name, 'DB CPU', c.VALUE)
+                               ) AS db_cpu,
+                           MAX (DECODE (c.stat_name, 'DB time', c.VALUE)
+                               ) AS db_time,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'SQL*Net roundtrips to/from client', c.VALUE
+                                      )
+                              ) AS sqlnet_rt_client,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'SQL*Net roundtrips to/from dblink', c.VALUE
+                                      )
+                              ) AS sqlnet_rt_dblink,
+                           MAX
+                              (DECODE
+                                    (c.stat_name,
+                                     'bytes received via SQL*Net from client', c.VALUE
+                                    )
+                              ) AS sqlnet_bytes_from_client,
+                           MAX
+                              (DECODE
+                                    (c.stat_name,
+                                     'bytes received via SQL*Net from dblink', c.VALUE
+                                    )
+                              ) AS sqlnet_bytes_from_dblink,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'bytes sent via SQL*Net to client', c.VALUE
+                                      )
+                              ) AS sqlnet_bytes_to_client,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'bytes sent via SQL*Net to dblink', c.VALUE
+                                      )
+                              ) AS sqlnet_bytes_to_dblink,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'concurrency wait time', ROUND
+                                                                   (  c.VALUE
+                                                                    / 100,
+                                                                    2
+                                                                   )
+                                      )
+                              ) AS concur_wait_s,
+                           MAX (DECODE (c.stat_name,
+                                        'execute count', c.VALUE
+                                       )
+                               ) AS execs,
+                           MAX (DECODE (c.stat_name,
+                                        'parse count (hard)', c.VALUE
+                                       )
+                               ) AS hard_parses,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'parse count (total)', c.VALUE
+                                      )
+                              ) AS total_parses,
+                           MAX (DECODE (c.stat_name,
+                                        'parse time cpu', ROUND (c.VALUE / 100,
+                                                                 2
+                                                                )
+                                       )
+                               ) AS parse_cpu_s,
+                           MAX (DECODE (c.stat_name,
+                                        'parse time elapsed', ROUND
+                                                                   (  c.VALUE
+                                                                    / 100,
+                                                                    2
+                                                                   )
+                                       )
+                               ) AS parse_elap_s,
+                           MAX (DECODE (c.stat_name,
+                                        'physical reads', c.VALUE
+                                       )
+                               ) AS phys_reads,
+                           MAX (DECODE (c.stat_name,
+                                        'physical writes', c.VALUE
+                                       )
+                               ) AS phys_writes,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'session logical reads', c.VALUE
+                                      )
+                              ) AS logical_reads,
+                           MAX (DECODE (c.stat_name, 'sorts (disk)', c.VALUE)
+                               ) AS sorts_disk,
+                           MAX (DECODE (c.stat_name,
+                                        'sorts (memory)', c.VALUE
+                                       )
+                               ) AS sorts_mem,
+                           MAX (DECODE (c.stat_name, 'sorts (rows)', c.VALUE)
+                               ) AS sorts_rows,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'table fetch by rowid', c.VALUE
+                                      )
+                              ) AS tbl_fetch_rowid,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'table scan rows gotten', c.VALUE
+                                      )
+                              ) AS tbl_scan_rows,
+                           MAX (DECODE (c.stat_name,
+                                        'user I/O wait time', ROUND
+                                                                   (  c.VALUE
+                                                                    / 100,
+                                                                    2
+                                                                   )
+                                       )
+                               ) AS io_wait_s,
+                           MAX (DECODE (c.stat_name, 'user calls', c.VALUE)
+                               ) AS user_calls,
+                           MAX (DECODE (c.stat_name, 'user commits', c.VALUE)
+                               ) AS user_commits,
+                           MAX (DECODE (c.stat_name,
+                                        'user rollbacks', c.VALUE
+                                       )
+                               ) AS user_rollbacks,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'workarea executions - multipass', c.VALUE
+                                      )
+                              ) AS wa_execs_multi,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'workarea executions - onepass', c.VALUE
+                                      )
+                              ) AS wa_execs_onepass,
+                           MAX
+                              (DECODE (c.stat_name,
+                                       'workarea executions - optimal', c.VALUE
+                                      )
+                              ) AS wa_execs_optimal
+                      FROM (SELECT dhss.snap_id, dhs.end_interval_time,
+                                   dhss.stat_name,
+                                     dhss.VALUE
+                                   - LAG (dhss.VALUE, 1) OVER (PARTITION BY dhss.stat_name ORDER BY dhs.snap_id)
+                                                                     AS VALUE,
+                                   DECODE
+                                      (  dhs.startup_time
+                                       - LAG (dhs.startup_time) OVER (PARTITION BY dhss.stat_name ORDER BY dhs.snap_id),
+                                       INTERVAL '0' SECOND, 'N',
+                                       'Y'
+                                      ) AS instance_restart,
+                                     (  CAST (dhs.end_interval_time AS DATE)
+                                      - CAST
+                                           (LAG (dhs.end_interval_time, 1) OVER (PARTITION BY dhss.stat_name ORDER BY dhs.snap_id) AS DATE
+                                           )
+                                     )
+                                   * 86400 AS snap_seconds
+                              FROM dba_hist_snapshot dhs,
+                                   dba_hist_sysstat dhss
+                             WHERE dhs.snap_id = dhss.snap_id
+                               AND dhss.stat_name IN
+                                      ('SQL*Net roundtrips to/from client',
+                                       'SQL*Net roundtrips to/from dblink',
+                                       'bytes received via SQL*Net from client',
+                                       'bytes received via SQL*Net from dblink',
+                                       'bytes sent via SQL*Net to client',
+                                       'bytes sent via SQL*Net to dblink',
+                                       'concurrency wait time',
+                                       'execute count', 'parse count (hard)',
+                                       'parse count (total)',
+                                       'parse time cpu', 'parse time elapsed',
+                                       'physical reads', 'physical writes',
+                                       'session logical reads',
+                                       'sorts (disk)', 'sorts (memory)',
+                                       'sorts (rows)', 'table fetch by rowid',
+                                       'table scan rows gotten',
+                                       'user I/O wait time', 'user calls',
+                                       'user commits', 'user rollbacks',
+                                       'workarea executions - multipass',
+                                       'workarea executions - onepass',
+                                       'workarea executions - optimal')
+                               AND dhs.snap_id IN (SELECT snap_id
+                                                     FROM snaps)
+                            UNION
+                            SELECT dhstm.snap_id, dhs.end_interval_time,
+                                   dhstm.stat_name,
+                                   ROUND
+                                      (  (  dhstm.VALUE
+                                          - LAG (dhstm.VALUE, 1) OVER (PARTITION BY dhstm.stat_name ORDER BY dhs.snap_id)
+                                         )
+                                       / 1000000,
+                                       0
+                                      ) AS VALUE,
+                                   DECODE
+                                      (  dhs.startup_time
+                                       - LAG (dhs.startup_time) OVER (PARTITION BY dhstm.stat_name ORDER BY dhs.snap_id),
+                                       INTERVAL '0' SECOND, 'N',
+                                       'Y'
+                                      ) AS instance_restart,
+                                     (  CAST (dhs.end_interval_time AS DATE)
+                                      - CAST
+                                           (LAG (dhs.end_interval_time, 1) OVER (PARTITION BY dhstm.stat_name ORDER BY dhs.snap_id) AS DATE
+                                           )
+                                     )
+                                   * 86400 AS snap_seconds
+                              FROM dba_hist_snapshot dhs,
+                                   dba_hist_sys_time_model dhstm
+                             WHERE dhs.snap_id = dhstm.snap_id
+                               AND dhstm.stat_name IN
+                                      ('DB time', 'DB CPU',
+                                       'hard parse elapsed time',
+                                       'parse time elapsed',
+                                       'sql execute elapsed time')
+                               AND dhs.snap_id IN (SELECT snap_id
+                                                     FROM snaps)) c
+                     WHERE instance_restart = 'N'
+                           AND EXTRACT (HOUR FROM end_interval_time) 
+                            BETWEEN :beginhour AND :endhour
+                  GROUP BY snap_id, end_interval_time, snap_seconds
+                  ORDER BY snap_id))
+GROUP BY DAY;
