@@ -1,0 +1,35 @@
+--- Binds: (:start_date,:end_date,:beginhour,:endhour) 
+
+SELECT day,enq_type_reason AS "ENQ TYPE (REASON)",sum(waits) as waits,sum(wait_s) as "WAIT S" FROM (
+SELECT 
+       trunc(end_interval_time) AS DAY,
+       substr(eq_type || '-' || to_char(nvl(name,' ')) 
+              || decode( upper(req_reason)
+                       , 'CONTENTION', null
+                       , '-',          null
+                       , ' ('||req_reason||')'), 1, 78) AS enq_type_reason,
+       waits,
+       round(mseconds/1000,2) AS "WAIT_S"
+        FROM (
+SELECT dhs.end_interval_time,
+         dhes.eq_type, dhes.req_reason,
+         dhes.total_wait#-LAG (dhes.total_wait#, 1) 
+           OVER (PARTITION BY dhes.eq_type,dhes.req_reason ORDER BY dhs.snap_id) AS waits,
+         ROUND((dhes.cum_wait_time-LAG (dhes.cum_wait_time, 1) 
+           OVER (PARTITION BY dhes.eq_type,dhes.req_reason ORDER BY dhs.snap_id)),2) AS mseconds,
+         DECODE(dhs.startup_time-LAG(dhs.startup_time) 
+             OVER (PARTITION BY dhes.eq_type,dhes.req_reason ORDER BY dhs.snap_id),
+           INTERVAL '0' SECOND,'N','Y') AS instance_restart
+    FROM dba_hist_snapshot dhs, dba_hist_enqueue_stat dhes
+   WHERE dhs.snap_id = dhes.snap_id
+     AND dhs.snap_id IN (SELECT snap_id 
+      FROM dba_hist_snapshot 
+      WHERE end_interval_time BETWEEN TO_DATE(:start_date,'MM/DD/YYYY HH24:MI:SS') 
+       AND TO_DATE(:end_date,'MM/DD/YYYY HH24:MI:SS'))) a, v$lock_type l
+   WHERE a.waits > 0 AND a.instance_restart = 'N' 
+   and extract(hour from end_interval_time) between :beginhour and :endhour
+   AND a.eq_type = l.type and name like 'Segment High Water Mark' and eq_type like 'HW' 
+   )
+   GROUP BY day,enq_type_reason
+   order by 1,4 desc, 3 desc
+   ;   
