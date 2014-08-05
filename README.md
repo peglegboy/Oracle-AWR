@@ -1,6 +1,4 @@
 Oracle-AWR
 ==========
 
-My first repository on GitHub!
-
-Oracle AWR scripts
+A collection of Oracle AWR scripts.
