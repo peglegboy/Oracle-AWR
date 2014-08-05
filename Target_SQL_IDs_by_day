@@ -1,0 +1,69 @@
+--- Binds: (:sql_id,::tsql_start_date,:tsql_end_date) 
+
+SELECT   b.DAY, 
+         b.sql_id, 
+         b.plan_hash, 
+         b.sql_profile AS profile, 
+         SUM (b.execs) as execs,
+         SUM (b.buff_gets) AS buff_gets,
+         ROUND (SUM (b.buff_gets) / SUM (b.execs), 0) AS "GETS_PER_EXE",
+         SUM(b.phys_reads) AS phys_reads,
+         ROUND (SUM (b.phys_reads) / SUM (b.execs), 0) AS "READS_PER_EXE",
+         ROUND (SUM(b.cpu_time) / 1000000, 2) AS "CPU_S",
+         ROUND (SUM((b.cpu_time) / 1000000) / SUM (b.execs), 4) AS "CPU_S_PER_EXE",
+         ROUND (SUM(b.elap_time) / 1000000, 2) AS "ELAP_S",
+         ROUND (SUM((b.elap_time) / 1000000) / SUM (b.execs), 4) AS "ELAP_S_PER_EXE",         
+         ROUND (SUM(b.io_wait) / 1000000, 2) AS "IOWAIT_S",
+         ROUND (SUM((b.io_wait) / 1000000) / SUM (b.execs), 4) AS "IOWAIT_S_PER_EXE",
+         ROUND (SUM(b.concur_wait) / 1000000, 2) AS "CWAIT_S",
+         SUM(b.parses) AS parses,                   
+         SUM(b.rows_ret) AS "ROWS",
+         ROUND(SUM(b.rows_ret)/SUM(b.execs),0) AS rows_per_exe
+    FROM (SELECT   TRUNC (end_interval_time) AS "DAY", 
+                   a.sql_id,
+                   a.plan_hash, 
+                   a.sql_profile,
+                   a.execs, 
+                   a.buff_gets,
+                   a.phys_reads,
+                   a.cpu_time,
+                   a.elap_time,
+                   a.rows_ret,
+                   a.io_wait,
+                   a.concur_wait,
+                   a.parses,
+                   a.sorts
+          FROM (SELECT dhs.end_interval_time, dhss.sql_id,
+                           dhss.plan_hash_value AS plan_hash,
+                           dhss.sql_profile AS sql_profile,
+                           dhss.executions_delta AS execs,
+                           dhss.buffer_gets_delta AS buff_gets,
+                           dhss.sorts_delta AS sorts,
+                           dhss.parse_calls_delta AS parses,
+                           dhss.disk_reads_delta AS phys_reads,
+                           dhss.rows_processed_delta AS rows_ret,
+                           dhss.cpu_time_delta AS cpu_time,
+                           dhss.elapsed_time_delta AS elap_time,
+                           dhss.iowait_delta AS io_wait,
+                           dhss.ccwait_delta AS concur_wait                           
+                     FROM dba_hist_sqlstat dhss, dba_hist_snapshot dhs
+                     WHERE dhss.snap_id = dhs.snap_id
+                     AND dhs.snap_id IN (
+                                      SELECT snap_id
+                                        FROM dba_hist_snapshot
+                                       WHERE end_interval_time
+                                                BETWEEN TO_DATE
+                                                          (:tsql_start_date,
+                                                           'MM/DD/YYYY HH24:MI:SS'
+                                                          )
+                                                    AND TO_DATE
+                                                          (:tsql_end_date,
+                                                           'MM/DD/YYYY HH24:MI:SS'
+                                                          ))
+                       AND dhss.sql_id = :sql_id
+                       AND dhss.executions_delta > 0) a
+          ORDER BY 1) b,
+         dba_hist_sqltext dhst
+   WHERE dhst.sql_id = b."SQL_ID"
+GROUP BY b.DAY, b.sql_id, b.plan_hash, b.sql_profile
+ORDER BY b."DAY";
